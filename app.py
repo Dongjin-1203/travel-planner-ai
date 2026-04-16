@@ -7,7 +7,7 @@
 """
 
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 from datetime import datetime
 
 
@@ -73,8 +73,8 @@ def init_gemini():
         api_key = st.secrets["GEMINI_API_KEY"]
         if not api_key or api_key.strip() == "":
             return None, "GEMINI_API_KEY가 비어 있습니다."
-        genai.configure(api_key=api_key)
-        return genai.GenerativeModel("gemini-2.0-flash"), None
+        client = genai.Client(api_key=api_key)
+        return client, None
     except KeyError:
         return None, "secrets.toml 파일에 GEMINI_API_KEY가 등록되지 않았습니다."
     except Exception as e:
@@ -120,7 +120,7 @@ def build_system_prompt() -> str:
 # ─────────────────────────────────────────────
 # 🤖 AI 일정 생성 함수
 # ─────────────────────────────────────────────
-def generate_itinerary(model, destination: str, days: int,
+def generate_itinerary(client, destination: str, days: int,
                         style: str, companion: str, budget: str) -> str:
     """
     Gemini API를 호출하여 여행 일정을 생성합니다.
@@ -138,7 +138,10 @@ def generate_itinerary(model, destination: str, days: int,
 """
     # 시스템 프롬프트 + 사용자 입력을 합쳐서 요청
     full_prompt = build_system_prompt() + "\n\n" + user_prompt
-    response = model.generate_content(full_prompt)
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=full_prompt,
+    )
     return response.text
 
 
@@ -258,7 +261,7 @@ if generate_btn and destination.strip():
     with st.spinner("✈️ AI가 맞춤 여행 일정을 생성 중입니다... 잠시만 기다려 주세요!"):
         try:
             result_text = generate_itinerary(
-                model=model,
+                client=model,
                 destination=destination.strip(),
                 days=days,
                 style=style,
