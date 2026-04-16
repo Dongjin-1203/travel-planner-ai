@@ -103,7 +103,7 @@ def generate_itinerary(client, destination: str, days: int,
 위 조건에 맞게 실용적이고 구체적인 일정을 작성해 주세요.
 """
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash",
         contents=user_prompt,
         config=types.GenerateContentConfig(
             system_instruction=build_system_prompt(),
@@ -291,7 +291,7 @@ with col_result:
 
 with st.sidebar:
     st.markdown("## ✈️ AI 여행 플래너")
-    st.caption("Powered by Gemini 2.0 Flash")
+    st.caption("Powered by Gemini 2.5 Flash")
     st.divider()
 
     if model:
