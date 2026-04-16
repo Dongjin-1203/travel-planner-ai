@@ -1,19 +1,9 @@
-"""
-========================================================
- AI 여행 플래너 — Gemini 2.0 Flash 기반 맞춤 일정 생성기
-========================================================
-실행 방법: streamlit run app.py
-필수 설정: .streamlit/secrets.toml 에 GEMINI_API_KEY 등록
-"""
-
 import streamlit as st
 from google import genai
-from datetime import datetime
+from google.genai import types
+from datetime import datetime, timedelta
 
 
-# ─────────────────────────────────────────────
-# 🖥️ 페이지 기본 설정
-# ─────────────────────────────────────────────
 st.set_page_config(
     page_title="AI 여행 플래너 ✈️",
     page_icon="✈️",
@@ -21,10 +11,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-
-# ─────────────────────────────────────────────
-# 🎨 전역 CSS 스타일
-# ─────────────────────────────────────────────
 st.markdown("""
 <style>
     .stApp {
@@ -61,14 +47,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────
-# 🔑 Gemini API 초기화 함수
-# ─────────────────────────────────────────────
 def init_gemini():
-    """
-    st.secrets에서 GEMINI_API_KEY를 읽어 Gemini API를 초기화합니다.
-    키가 없거나 잘못된 경우 사용자 친화적인 에러 메시지를 반환합니다.
-    """
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         if not api_key or api_key.strip() == "":
@@ -81,14 +60,7 @@ def init_gemini():
         return None, f"API 초기화 오류: {str(e)}"
 
 
-# ─────────────────────────────────────────────
-# 📝 시스템 프롬프트 생성 함수
-# ─────────────────────────────────────────────
 def build_system_prompt() -> str:
-    """
-    AI가 여행 일정을 생성할 때 따를 시스템 프롬프트를 반환합니다.
-    출력 구조와 톤을 명확히 정의합니다.
-    """
     return """당신은 전문 여행 플래너입니다. 사용자가 제공한 여행 정보를 바탕으로
 맞춤형 여행 일정을 아래 형식에 맞게 작성해 주세요.
 
@@ -117,14 +89,8 @@ def build_system_prompt() -> str:
 """
 
 
-# ─────────────────────────────────────────────
-# 🤖 AI 일정 생성 함수
-# ─────────────────────────────────────────────
 def generate_itinerary(client, destination: str, days: int,
                         style: str, companion: str, budget: str) -> str:
-    """
-    Gemini API를 호출하여 여행 일정을 생성합니다.
-    """
     user_prompt = f"""
 다음 여행 정보를 바탕으로 맞춤 여행 일정을 작성해 주세요.
 
@@ -136,31 +102,28 @@ def generate_itinerary(client, destination: str, days: int,
 
 위 조건에 맞게 실용적이고 구체적인 일정을 작성해 주세요.
 """
-    # 시스템 프롬프트 + 사용자 입력을 합쳐서 요청
-    full_prompt = build_system_prompt() + "\n\n" + user_prompt
     response = client.models.generate_content(
         model="gemini-2.0-flash",
-        contents=full_prompt,
+        contents=user_prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=build_system_prompt(),
+        ),
     )
+    if not response.text:
+        raise ValueError("AI 응답이 비어 있습니다. 다시 시도해 주세요.")
     return response.text
 
 
-# ─────────────────────────────────────────────
-# 📌 세션 상태 초기화 (앱 최초 실행 시 한 번만)
-# ─────────────────────────────────────────────
 if "history" not in st.session_state:
-    st.session_state.history = []          # 이전 결과 히스토리 리스트
+    st.session_state.history = []
 
 if "current_result" not in st.session_state:
-    st.session_state.current_result = None  # 현재 화면에 표시 중인 결과
+    st.session_state.current_result = None
 
 if "current_info" not in st.session_state:
-    st.session_state.current_info = None    # 현재 결과의 입력 정보
+    st.session_state.current_info = None
 
 
-# ─────────────────────────────────────────────
-# 🎯 메인 헤더
-# ─────────────────────────────────────────────
 st.markdown("""
 <div class="hero-banner">
     <h1>✈️ AI 여행 플래너</h1>
@@ -168,10 +131,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-
-# ─────────────────────────────────────────────
-# 🔑 API 초기화 및 상태 확인
-# ─────────────────────────────────────────────
 model, api_error = init_gemini()
 
 if api_error:
@@ -188,44 +147,43 @@ GEMINI_API_KEY = "여기에_실제_API_키_입력"
     st.stop()
 
 
-# ─────────────────────────────────────────────
-# 📐 레이아웃 — 왼쪽 입력 폼 | 오른쪽 결과
-# ─────────────────────────────────────────────
 col_input, col_result = st.columns([1, 1.6], gap="large")
 
-
-# ══════════════════════════════════════════════
-# 왼쪽: 여행 정보 입력 폼
-# ══════════════════════════════════════════════
 with col_input:
     st.subheader("🗺️ 여행 정보 입력", divider="blue")
 
-    # 여행지 입력
     destination = st.text_input(
         "📍 여행지",
         placeholder="예: 도쿄, 파리, 제주도, 뉴욕...",
         help="국내·해외 모두 가능합니다.",
     )
 
-    # 여행 기간
-    days = st.number_input(
-        "📅 여행 기간 (일)",
-        min_value=1, max_value=14, value=3, step=1,
+    today = datetime.today().date()
+    date_range = st.date_input(
+        "📅 여행 기간",
+        value=(today, today + timedelta(days=2)),
+        min_value=today,
+        format="YYYY/MM/DD",
     )
 
-    # 여행 스타일 선택
+    if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
+        start_date, end_date = date_range
+        days = (end_date - start_date).days + 1
+        st.caption(f"📆 {start_date.strftime('%Y.%m.%d')} ~ {end_date.strftime('%Y.%m.%d')} · 총 {days}일")
+    else:
+        days = None
+        st.caption("⬆️ 종료 날짜를 선택해 주세요.")
+
     style = st.selectbox(
         "🎨 여행 스타일",
         options=["힐링", "액티비티", "맛집 투어", "문화·역사", "쇼핑"],
     )
 
-    # 동행 유형
     companion = st.selectbox(
         "👥 동행 유형",
         options=["혼자", "커플", "가족", "친구들"],
     )
 
-    # 예산 수준
     budget = st.selectbox(
         "💰 예산",
         options=["저예산 (알뜰 여행)", "보통 (합리적 여행)", "여유있게 (프리미엄 여행)"],
@@ -233,12 +191,11 @@ with col_input:
 
     st.divider()
 
-    # 일정 생성 버튼 — 여행지 미입력 시 비활성화
     generate_btn = st.button(
         "🚀 AI 일정 생성하기",
         type="primary",
         use_container_width=True,
-        disabled=(not destination.strip()),
+        disabled=(not destination.strip() or days is None),
     )
 
     if not destination.strip():
@@ -254,10 +211,7 @@ with col_input:
         """)
 
 
-# ══════════════════════════════════════════════
-# AI 일정 생성 처리 (버튼 클릭 시)
-# ══════════════════════════════════════════════
-if generate_btn and destination.strip():
+if generate_btn and destination.strip() and days is not None:
     with st.spinner("✈️ AI가 맞춤 여행 일정을 생성 중입니다... 잠시만 기다려 주세요!"):
         try:
             result_text = generate_itinerary(
@@ -269,7 +223,6 @@ if generate_btn and destination.strip():
                 budget=budget,
             )
 
-            # 현재 결과 저장
             st.session_state.current_result = result_text
             st.session_state.current_info = {
                 "destination": destination.strip(),
@@ -280,7 +233,6 @@ if generate_btn and destination.strip():
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
             }
 
-            # 히스토리에 추가 (최대 5개 유지)
             st.session_state.history.insert(0, {
                 "info": st.session_state.current_info,
                 "result": result_text,
@@ -289,7 +241,6 @@ if generate_btn and destination.strip():
                 st.session_state.history = st.session_state.history[:5]
 
         except Exception as e:
-            # API 호출 실패 시 사용자 친화적 에러 처리
             error_msg = str(e)
             if "quota" in error_msg.lower() or "rate" in error_msg.lower():
                 st.error("⏳ API 요청 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.")
@@ -299,9 +250,6 @@ if generate_btn and destination.strip():
                 st.error(f"❌ 일정 생성 중 오류가 발생했습니다: {error_msg}")
 
 
-# ══════════════════════════════════════════════
-# 오른쪽: 생성 결과 출력
-# ══════════════════════════════════════════════
 with col_result:
     if st.session_state.current_result:
         info = st.session_state.current_info
@@ -316,12 +264,10 @@ with col_result:
             unsafe_allow_html=True,
         )
 
-        # 결과 본문 출력
         st.markdown('<div class="result-card">', unsafe_allow_html=True)
         st.markdown(st.session_state.current_result)
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # 텍스트 파일 다운로드 버튼
         st.download_button(
             label="📥 일정 텍스트 다운로드",
             data=st.session_state.current_result,
@@ -331,7 +277,6 @@ with col_result:
         )
 
     else:
-        # 결과가 없을 때 안내 화면
         st.subheader("📋 여행 일정이 여기에 표시됩니다", divider="blue")
         st.markdown("""
         <div style="text-align:center; padding: 3rem 1rem; color: #888;">
@@ -344,15 +289,11 @@ with col_result:
         """, unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────
-# 📚 사이드바 — 히스토리 + 사용 안내
-# ─────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## ✈️ AI 여행 플래너")
     st.caption("Powered by Gemini 2.0 Flash")
     st.divider()
 
-    # API 연결 상태 표시
     if model:
         st.success("✅ Gemini API 연결됨", icon="🔑")
     else:
@@ -360,7 +301,6 @@ with st.sidebar:
 
     st.divider()
 
-    # 이전 결과 히스토리 — 클릭 시 해당 결과 복원
     st.markdown("### 📂 최근 일정 히스토리")
     if st.session_state.history:
         for i, item in enumerate(st.session_state.history):
